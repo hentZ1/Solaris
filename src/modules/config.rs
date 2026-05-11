@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
@@ -24,10 +24,17 @@ pub fn create_config(path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn load_config(path: PathBuf) -> Result<TomlContent> {
+pub fn load_config(path: &PathBuf) -> Result<TomlContent> {
     let toml_content = fs::read_to_string(path)?;
 
     let content = toml::from_str(&toml_content)?;
 
     Ok(content)
+}
+
+pub fn update_config(path: &PathBuf, content: TomlContent) -> Result<()> {
+    let update = toml::to_string(&content)?;
+    fs::write(path, update)?;
+
+    Ok(())
 }
