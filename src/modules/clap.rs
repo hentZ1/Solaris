@@ -1,4 +1,32 @@
 use clap::Parser;
+use std::{path::PathBuf, str::FromStr};
+
+#[derive(Debug, Clone)]
+pub struct AuxTargetRule {
+    pub extensions: Vec<String>,
+    pub destination: PathBuf,
+}
+impl FromStr for AuxTargetRule {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.splitn(2, ':').collect();
+
+        if parts.len() != 2 {
+            return Err(format!(
+                "Invalid format: expected 'ext1,ext2:path', received '{}'",
+                s
+            ));
+        }
+        let extensions = parts[0].split(',').map(|e| e.trim().to_string()).collect();
+
+        let destination = PathBuf::from(parts[1].trim());
+
+        Ok(AuxTargetRule {
+            extensions,
+            destination,
+        })
+    }
+}
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "Solaris-CLI", about = "Rust-based file and folder organizer", long_about= None)]
@@ -24,4 +52,11 @@ pub struct Args {
         num_args = 1..
     )]
     pub protected: Vec<String>,
+    #[arg(
+        short = 't',
+        long = "target",
+        help = "Map file extensions to destination folders. Format: 'ext1,ext2:/path'. Example: -t zip,tar:/home/user/Archives",
+        value_parser = clap::value_parser!(AuxTargetRule)
+    )]
+    pub targets: Vec<AuxTargetRule>,
 }

@@ -5,9 +5,13 @@ use std::sync::mpsc::channel;
 fn main() {
     let args = Args::parse();
     let (tx, rx) = channel();
+
     let config_path = dirs::config_dir().unwrap().join("solaris/config.toml");
+
     create_config(&config_path).expect("It was not possible to create the configuration file.");
+
     let config = load_config(&config_path).expect("Error loading configuration file.");
+
     if args.watch.is_empty() {
     } else {
         let content = TomlContent {
