@@ -1,5 +1,6 @@
 #!/bin/bash
 
+#comment for commit
 set -e
 
 BINARY_NAME="solaris"
