@@ -2,10 +2,14 @@ use clap::Parser;
 use std::{path::PathBuf, str::FromStr};
 
 #[derive(Debug, Clone)]
+
+//creates the auxiliary structure for the args structure parameter
 pub struct AuxTargetRule {
     pub extensions: Vec<String>,
     pub destination: PathBuf,
 }
+
+//treats the string it receives and splits the string infos between extensions and destinations
 impl FromStr for AuxTargetRule {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {

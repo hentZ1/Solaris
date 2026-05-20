@@ -1,12 +1,13 @@
 use anyhow::{Ok, Result};
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf};
+use std::{collections::HashMap, fs, path::PathBuf};
 
-#[derive(Deserialize, Serialize, Default)]
+#[derive(Deserialize, Serialize, Default, Clone)]
 pub struct TomlContent {
     pub rules: Vec<String>,
     pub watch: Vec<String>,
     pub protected: Vec<String>,
+    pub targets: HashMap<String, String>,
 }
 
 pub fn create_config(path: &PathBuf) -> Result<()> {
