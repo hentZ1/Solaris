@@ -6,7 +6,7 @@ pub enum Action { Move { destination: PathBuf } }
 pub fn apply_rules(event: &FsEvent, targets: &HashMap<String, String>) -> Option<Action> 
 {
     let path = match event {
-        FsEvent::Created(p) => p
+        FsEvent::Created(p) => p,
         FsEvent::Removed(_) => return None,
     };
 
@@ -16,6 +16,6 @@ pub fn apply_rules(event: &FsEvent, targets: &HashMap<String, String>) -> Option
     // Query the HashMap using the extension as the key.
     let destination = targets.get(ext)?;
 
-    Some((Action::Move { destination: PathBuf::from(destination) }))
+    Some(Action::Move { destination: PathBuf::from(destination) })
 }
 
