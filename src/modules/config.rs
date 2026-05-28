@@ -1,4 +1,4 @@
-use anyhow::{Ok, Result};
+use anyhow::Ok;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::PathBuf};
 
@@ -10,7 +10,7 @@ pub struct TomlContent {
     pub targets: HashMap<String, String>,
 }
 
-pub fn create_config(path: &PathBuf) -> Result<()> {
+pub fn create_config(path: &PathBuf) -> anyhow::Result<()> {
     if path.exists() {
         return Ok(());
     }
@@ -25,7 +25,7 @@ pub fn create_config(path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn load_config(path: &PathBuf) -> Result<TomlContent> {
+pub fn load_config(path: &PathBuf) -> anyhow::Result<TomlContent> {
     let toml_content = fs::read_to_string(path)?;
 
     let content = toml::from_str(&toml_content)?;
@@ -33,7 +33,7 @@ pub fn load_config(path: &PathBuf) -> Result<TomlContent> {
     Ok(content)
 }
 
-pub fn update_config(path: &PathBuf, content: TomlContent) -> Result<()> {
+pub fn update_config(path: &PathBuf, content: TomlContent) -> anyhow::Result<()> {
     let update = toml::to_string(&content)?;
     fs::write(path, update)?;
 

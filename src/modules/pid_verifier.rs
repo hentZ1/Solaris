@@ -1,6 +1,5 @@
-use std::{fs::*, path::PathBuf};
-
 use nix::unistd::Pid;
+use std::{fs::*, path::PathBuf};
 pub fn pid_verifier(path: &PathBuf) {
     match read_to_string(path) {
         Ok(content) => {

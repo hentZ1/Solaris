@@ -14,8 +14,10 @@ pub fn watcher(paths: Vec<String>, tx: Sender<FsEvent>) -> anyhow::Result<()> {
     //filesystem
     let mut watcher = recommended_watcher(move |res: notify::Result<notify::Event>| {
         //discart events that are errors
+
         if let Ok(event) = res {
             //this match verifies the event type, sends them to the channel and discart everyother
+
             //event that the watcher is not interested
             match event.kind {
                 EventKind::Create(_) => {

@@ -1,8 +1,9 @@
+use anyhow::Ok;
 use clap::Parser;
 use solaris::modules::{clap::Args, config::*, pid_verifier::*, watcher::*};
 use std::{collections::HashMap, path::PathBuf, sync::mpsc::channel};
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let (tx, rx) = channel();
 
@@ -12,16 +13,13 @@ fn main() {
     pid_verifier(&pid_path);
 
     //verify if config file exists
-    if config_path
-        .try_exists()
-        .expect("Config file dont exists, creating config file...")
-    {
+    if config_path.try_exists()? {
     } else {
-        create_config(&config_path).expect("It was not possible to create the configuration file.");
+        create_config(&config_path)?;
     }
 
     //load the config contents for other modules to use
-    let config = load_config(&config_path).expect("Error loading configuration file.");
+    let config = load_config(&config_path)?;
 
     //converting the <AuxTargetRules> in a hashmap for the config file
     let mut targets = HashMap::new();
@@ -56,13 +54,13 @@ fn main() {
     };
 
     //updates the config if something new is added
-    update_config(&config_path, content).expect("Failed to update config");
+    update_config(&config_path, content)?;
 
-    std::fs::write(&pid_path, std::process::id().to_string()).expect("could not write the new pid");
+    std::fs::write(&pid_path, std::process::id().to_string())?;
 
     //start the watcher
     std::thread::spawn(move || {
-        watcher(config.watch, tx).expect("Watcher failed");
+        watcher(config.watch, tx).expect("could not start the watcher");
     });
 
     //captures the events that the watcher observed and prints
@@ -72,4 +70,5 @@ fn main() {
             FsEvent::Removed(path) => println!("Removed: {:?}", path),
         }
     }
+    Ok(())
 }
