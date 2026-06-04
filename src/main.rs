@@ -61,7 +61,7 @@ fn main() -> anyhow::Result<()> {
     std::thread::spawn(move || {
         watcher(config.watch, tx).expect("");
     });
-    //captures the events that the watcher observed and prints
+    //
     for event in rx {
         match &event {
             FsEvent::Created(path) => {

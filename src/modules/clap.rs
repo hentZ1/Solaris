@@ -25,6 +25,14 @@ impl FromStr for AuxTargetRule {
 
         let destination = PathBuf::from(parts[1].trim());
 
+        let destination = if destination.starts_with("~") {
+            dirs::home_dir()
+                .unwrap()
+                .join(destination.strip_prefix("~").unwrap())
+        } else {
+            destination
+        };
+
         Ok(AuxTargetRule {
             extensions,
             destination,
