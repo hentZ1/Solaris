@@ -21,7 +21,18 @@ impl FromStr for AuxTargetRule {
                 s
             ));
         }
-        let extensions = parts[0].split(',').map(|e| e.trim().to_string()).collect();
+        let extensions = parts[0]
+            .split(',')
+            .map(|e| {
+                let ext = e.trim();
+
+                if ext.starts_with(".") {
+                    ext[1..].to_string()
+                } else {
+                    ext.to_string()
+                }
+            })
+            .collect();
 
         let destination = PathBuf::from(parts[1].trim());
 
@@ -32,7 +43,6 @@ impl FromStr for AuxTargetRule {
         } else {
             destination
         };
-
         Ok(AuxTargetRule {
             extensions,
             destination,
