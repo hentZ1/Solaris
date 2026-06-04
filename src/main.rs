@@ -1,6 +1,12 @@
 use clap::Parser;
 use daemonize::Daemonize;
-use solaris::modules::{clap::Args, config::*, pid_verifier::*, watcher::*};
+use solaris::modules::{
+    clap::Args,
+    config::*,
+    pid_verifier::*,
+    rules::{Action, apply_rules},
+    watcher::*,
+};
 use std::{collections::HashMap, fs::File, path::PathBuf, sync::mpsc::channel};
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
@@ -19,7 +25,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     //load the config contents for other modules to use
-    let config = load_config(&config_path)?;
+    let mut config = load_config(&config_path)?;
 
     //converting the <AuxTargetRules> in a hashmap for the config file
     let mut targets = HashMap::new();
@@ -29,32 +35,17 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    //It checks if all the args are empty so the updater is not called
-    let content = TomlContent {
-        rules: if args.rules.is_empty() {
-            config.rules
-        } else {
-            args.rules
-        },
-        watch: if args.watch.is_empty() {
-            config.watch.clone()
-        } else {
-            args.watch
-        },
-        protected: if args.protected.is_empty() {
-            config.protected
-        } else {
-            args.protected
-        },
-        targets: if targets.is_empty() {
-            config.targets
-        } else {
-            targets
-        },
+    let args_content = TomlContent {
+        rules: args.rules,
+        watch: args.watch,
+        protected: args.protected,
+        targets: targets,
     };
 
+    config.merge(args_content);
+
     //updates the config if something new is added
-    update_config(&config_path, &content)?;
+    update_config(&config_path, &config)?;
 
     let daemonize = Daemonize::new()
         .pid_file(&pid_path)
@@ -68,14 +59,17 @@ fn main() -> anyhow::Result<()> {
     }
     //start the watcher
     std::thread::spawn(move || {
-        watcher(content.watch, tx).expect("");
+        watcher(config.watch, tx).expect("");
     });
-
     //captures the events that the watcher observed and prints
     for event in rx {
-        match event {
-            FsEvent::Created(path) => println!("Created: {:?}", path),
-            FsEvent::Removed(path) => println!("Removed: {:?}", path),
+        match &event {
+            FsEvent::Created(path) => {
+                if let Some(Action::Move { destination }) = apply_rules(&event, &config.targets) {
+                    std::fs::rename(path, destination.join(path.file_name().unwrap())).ok();
+                }
+            }
+            FsEvent::Removed(_) => {}
         }
     }
     anyhow::Ok(())

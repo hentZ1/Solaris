@@ -9,7 +9,14 @@ pub struct TomlContent {
     pub protected: Vec<String>,
     pub targets: HashMap<String, String>,
 }
-
+impl TomlContent {
+    pub fn merge(&mut self, other: TomlContent) {
+        self.rules.extend(other.rules);
+        self.watch.extend(other.watch);
+        self.protected.extend(other.protected);
+        self.targets.extend(other.targets);
+    }
+}
 pub fn create_config(path: &PathBuf) -> anyhow::Result<()> {
     if path.exists() {
         return Ok(());
