@@ -1,15 +1,15 @@
-use anyhow::Ok;
 use clap::Parser;
+use daemonize::Daemonize;
 use solaris::modules::{clap::Args, config::*, pid_verifier::*, watcher::*};
-use std::{collections::HashMap, path::PathBuf, sync::mpsc::channel};
-
+use std::{collections::HashMap, fs::File, path::PathBuf, sync::mpsc::channel};
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let (tx, rx) = channel();
 
     let config_path = dirs::config_dir().unwrap().join("solaris/config.toml"); //universal path for the config file
     let pid_path = PathBuf::from("/tmp/solaris.pid"); //hardcoded path to the pid
-
+    let stdout = File::create("/tmp/solaris.out")?;
+    let stderr = File::create("/tmp/solaris.err")?;
     pid_verifier(&pid_path);
 
     //verify if config file exists
@@ -56,11 +56,19 @@ fn main() -> anyhow::Result<()> {
     //updates the config if something new is added
     update_config(&config_path, content)?;
 
-    std::fs::write(&pid_path, std::process::id().to_string())?;
+    let daemonize = Daemonize::new()
+        .pid_file(&pid_path)
+        .working_directory("/tmp/")
+        .stdout(stdout)
+        .stderr(stderr);
 
+    match daemonize.start() {
+        Ok(_) => {}
+        Err(e) => println!("{} ", e),
+    }
     //start the watcher
     std::thread::spawn(move || {
-        watcher(config.watch, tx).expect("could not start the watcher");
+        watcher(config.watch, tx).expect("");
     });
 
     //captures the events that the watcher observed and prints
@@ -70,5 +78,5 @@ fn main() -> anyhow::Result<()> {
             FsEvent::Removed(path) => println!("Removed: {:?}", path),
         }
     }
-    Ok(())
+    anyhow::Ok(())
 }
