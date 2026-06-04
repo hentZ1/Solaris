@@ -31,6 +31,8 @@ ExecStart=$INSTALL_PATH
 Restart=on-failure
 RestartSec=5
 User=$SERVICE_USER
+Type=forking
+PIDFile=/tmp/solaris.pid
 
 [Install]
 WantedBy=default.target

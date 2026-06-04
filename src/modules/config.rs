@@ -33,7 +33,7 @@ pub fn load_config(path: &PathBuf) -> anyhow::Result<TomlContent> {
     Ok(content)
 }
 
-pub fn update_config(path: &PathBuf, content: TomlContent) -> anyhow::Result<()> {
+pub fn update_config(path: &PathBuf, content: &TomlContent) -> anyhow::Result<()> {
     let update = toml::to_string(&content)?;
     fs::write(path, update)?;
 

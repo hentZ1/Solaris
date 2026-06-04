@@ -54,7 +54,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     //updates the config if something new is added
-    update_config(&config_path, content)?;
+    update_config(&config_path, &content)?;
 
     let daemonize = Daemonize::new()
         .pid_file(&pid_path)
@@ -64,11 +64,11 @@ fn main() -> anyhow::Result<()> {
 
     match daemonize.start() {
         Ok(_) => {}
-        Err(e) => println!("{} ", e),
+        Err(_) => {}
     }
     //start the watcher
     std::thread::spawn(move || {
-        watcher(config.watch, tx).expect("");
+        watcher(content.watch, tx).expect("");
     });
 
     //captures the events that the watcher observed and prints
