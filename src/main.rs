@@ -7,18 +7,25 @@ use solaris::modules::{
     rules::{Action, apply_rules},
     watcher::*,
 };
-use std::{collections::HashMap, fs::File, path::PathBuf, sync::mpsc::channel};
+use std::{
+    collections::HashMap,
+    fs::File,
+    path::PathBuf,
+    sync::mpsc::{Receiver, channel},
+};
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let (tx, rx) = channel();
 
-    let config_path = dirs::config_dir().unwrap().join("solaris/config.toml"); //universal path for the config file
-    let pid_path = PathBuf::from("/tmp/solaris.pid"); //hardcoded path to the pid
+    let config_path = dirs::config_dir().unwrap().join("solaris/config.toml");
+    let pid_path = PathBuf::from("/tmp/solaris.pid");
     let stdout = File::create("/tmp/solaris.out")?;
     let stderr = File::create("/tmp/solaris.err")?;
+
     pid_verifier(&pid_path);
 
-    //verify if config file exists
+    //verify if the config file exists
     if config_path.try_exists()? {
     } else {
         create_config(&config_path)?;
@@ -47,6 +54,21 @@ fn main() -> anyhow::Result<()> {
     //updates the config if something new is added
     update_config(&config_path, &config)?;
 
+    //runs the daemon
+    daemon_runner(&pid_path, stdout, stderr);
+
+    std::thread::spawn(move || {
+        watcher(config.watch, tx).expect("");
+    });
+
+    //apply the rules
+    applyrules_runner(rx, &config.targets);
+
+    anyhow::Ok(())
+}
+
+//function to run the daemon
+fn daemon_runner(pid_path: &PathBuf, stdout: File, stderr: File) {
     let daemonize = Daemonize::new()
         .pid_file(&pid_path)
         .working_directory("/tmp/")
@@ -57,20 +79,20 @@ fn main() -> anyhow::Result<()> {
         Ok(_) => {}
         Err(_) => {}
     }
-    //start the watcher
-    std::thread::spawn(move || {
-        watcher(config.watch, tx).expect("");
-    });
-    //
+}
+//function to run the apply_rules
+fn applyrules_runner(
+    rx: Receiver<FsEvent>,
+    targets: &HashMap<std::string::String, std::string::String>,
+) {
     for event in rx {
         match &event {
             FsEvent::Created(path) => {
-                if let Some(Action::Move { destination }) = apply_rules(&event, &config.targets) {
+                if let Some(Action::Move { destination }) = apply_rules(&event, targets) {
                     std::fs::rename(path, destination.join(path.file_name().unwrap())).ok();
                 }
             }
             FsEvent::Removed(_) => {}
         }
     }
-    anyhow::Ok(())
 }
