@@ -67,6 +67,9 @@ pub enum Commands {
 
     Remove {
         field: ConfigField,
+        #[arg(
+            help = "Value to remove. For Watch, Rules and Protected, pass the item itself. For Targets, pass the extension (e.g. 'pdf')"
+        )]
         value: String,
     },
 }

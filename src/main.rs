@@ -16,103 +16,19 @@ use std::{
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-
-    let config_path 
-    = dirs::config_dir().unwrap().join("solaris/config.toml");
+    let config_path = dirs::config_dir().unwrap().join("solaris/config.toml");
 
     //verify if the config file exists
-    if config_path.try_exists()? {
-    } else {
+    if !config_path.try_exists()? {
         create_config(&config_path)?;
     }
 
-    match &args.command {
-        Some(Commands::List { field }) => {
-            let config = load_config(&config_path)?;
-
-            match field {
-                Some(ConfigField::Watch) => {
-                    for item in &config.watch {
-                        println!("{}", item);
-                    }
-                }
-
-                Some(ConfigField::Rules) => {
-                    for item in &config.rules {
-                        println!("{}", item);
-                    }
-                }
-
-                Some(ConfigField::Protected) => {
-                    for item in &config.protected {
-                        println!("{}", item);
-                    }
-                }
-
-                Some(ConfigField::Targets) => {
-                    for (ext, dest) in &config.targets {
-                        println!("{ext} -> {dest}");
-                    }
-                }
-
-                None => {
-                    println!("Rules:");
-                    for item in &config.rules {
-                        println!("  {}", item);
-                    }
-
-                    println!("Watch:");
-                    for item in &config.watch {
-                        println!("  {}", item);
-                    }
-
-                    println!("Protected:");
-                    for item in &config.protected {
-                        println!("  {}", item);
-                    }
-
-                    println!("Targets:");
-                    for (ext, dest) in &config.targets {
-                        println!("  {ext} -> {dest}");
-                    }
-                }
-            }
-
-            return Ok(());
-        }
-
-        Some(Commands::Remove { field, value }) => {
-            let mut config = load_config(&config_path)?;
-
-            match field {
-                ConfigField::Watch => {
-                    config.watch.retain(|item| item != value.as_str());
-                }
-
-                ConfigField::Rules => {
-                    config.rules.retain(|item| item != value.as_str());
-                }
-
-                ConfigField::Protected => {
-                    config.protected.retain(|item| item != value.as_str());
-                }
-
-                ConfigField::Targets => {
-                    config.targets.remove(value);
-                }
-                
-            }
-
-            update_config(&config_path, &config)?;
-
-            return Ok(());
-        }
-
-        None => {}
+    if let Some(result) = subcommand_handler(&args.command, &config_path) {
+        return result;
     }
-
+    //channel
     let (tx, rx) = channel();
-
+    //paths
     let pid_path = PathBuf::from("/tmp/solaris.pid");
     let stdout = File::create("/tmp/solaris.out")?;
     let stderr = File::create("/tmp/solaris.err")?;
@@ -134,7 +50,7 @@ fn main() -> anyhow::Result<()> {
         rules: args.rules,
         watch: args.watch,
         protected: args.protected,
-        targets: targets,
+        targets,
     };
 
     config.merge(args_content);
@@ -143,10 +59,10 @@ fn main() -> anyhow::Result<()> {
     update_config(&config_path, &config)?;
 
     //runs the daemon
-    daemon_runner(&pid_path, stdout, stderr);
+    daemon_runner(&pid_path, stdout, stderr)?;
 
     std::thread::spawn(move || {
-        watcher(config.watch, tx).expect("");
+        watcher(config.watch, tx).ok();
     });
 
     //apply the rules
@@ -156,23 +72,22 @@ fn main() -> anyhow::Result<()> {
 }
 
 //function to run the daemon
-fn daemon_runner(pid_path: &PathBuf, stdout: File, stderr: File) {
+fn daemon_runner(pid_path: &PathBuf, stdout: File, stderr: File) -> anyhow::Result<()> {
     let daemonize = Daemonize::new()
         .pid_file(&pid_path)
         .working_directory("/tmp/")
         .stdout(stdout)
         .stderr(stderr);
 
-    match daemonize.start() {
-        Ok(_) => {}
-        Err(_) => {}
-    }
+    daemonize.start().map_err(|e| {
+        eprintln!("{}", e);
+        anyhow::anyhow!(e)
+    })?;
+
+    anyhow::Ok(())
 }
 //function to run the apply_rules
-fn applyrules_runner(
-    rx: Receiver<FsEvent>,
-    targets: &HashMap<std::string::String, std::string::String>,
-) {
+fn applyrules_runner(rx: Receiver<FsEvent>, targets: &HashMap<String, String>) {
     for event in rx {
         match &event {
             FsEvent::Created(path) => {
@@ -182,5 +97,80 @@ fn applyrules_runner(
             }
             FsEvent::Removed(_) => {}
         }
+    }
+}
+
+fn subcommand_handler(
+    command: &Option<Commands>,
+    config_path: &PathBuf,
+) -> Option<anyhow::Result<()>> {
+    match command {
+        //LIST
+        Some(Commands::List { field }) => Some((|| -> anyhow::Result<()> {
+            let config = load_config(config_path)?;
+            match field {
+                Some(ConfigField::Watch) => {
+                    for item in &config.watch {
+                        println!("{}", item);
+                    }
+                }
+                Some(ConfigField::Rules) => {
+                    for item in &config.rules {
+                        println!("{}", item);
+                    }
+                }
+                Some(ConfigField::Protected) => {
+                    for item in &config.protected {
+                        println!("{}", item);
+                    }
+                }
+                Some(ConfigField::Targets) => {
+                    for (ext, dest) in &config.targets {
+                        println!("{ext} -> {dest}");
+                    }
+                }
+                None => {
+                    println!("Rules:");
+                    for item in &config.rules {
+                        println!("  {}", item);
+                    }
+                    println!("Watch:");
+                    for item in &config.watch {
+                        println!("  {}", item);
+                    }
+                    println!("Protected:");
+                    for item in &config.protected {
+                        println!("  {}", item);
+                    }
+                    println!("Targets:");
+                    for (ext, dest) in &config.targets {
+                        println!("  {ext} -> {dest}");
+                    }
+                }
+            }
+            Ok(())
+        })()),
+        //REMOVE
+        Some(Commands::Remove { field, value }) => Some((|| -> anyhow::Result<()> {
+            let mut config = load_config(config_path)?;
+            match field {
+                ConfigField::Watch => {
+                    config.watch.retain(|item| item != value.as_str());
+                }
+                ConfigField::Rules => {
+                    config.rules.retain(|item| item != value.as_str());
+                }
+                ConfigField::Protected => {
+                    config.protected.retain(|item| item != value.as_str());
+                }
+                ConfigField::Targets => {
+                    config.targets.remove(value);
+                }
+            }
+            update_config(config_path, &config)?;
+            Ok(())
+        })()),
+
+        None => None,
     }
 }
