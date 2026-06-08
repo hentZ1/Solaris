@@ -16,7 +16,9 @@ use std::{
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    let config_path = dirs::config_dir().unwrap().join("solaris/config.toml");
+    let config_path = dirs::config_dir()
+        .ok_or_else(|| anyhow::anyhow!("could not found any directory"))?
+        .join("solaris/config.toml");
 
     //verify if the config file exists
     if !config_path.try_exists()? {
@@ -50,7 +52,7 @@ fn main() -> anyhow::Result<()> {
         rules: args.rules,
         watch: args.watch,
         protected: args.protected,
-        targets,
+        targets: targets,
     };
 
     config.merge(args_content);
