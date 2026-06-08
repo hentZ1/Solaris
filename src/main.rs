@@ -1,7 +1,7 @@
 use clap::Parser;
 use daemonize::Daemonize;
 use solaris::modules::{
-    clap::Args,
+    clap::{Args, Commands, ConfigField},
     config::*,
     pid_verifier::*,
     rules::{Action, apply_rules},
@@ -16,20 +16,108 @@ use std::{
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    let (tx, rx) = channel();
 
-    let config_path = dirs::config_dir().unwrap().join("solaris/config.toml");
-    let pid_path = PathBuf::from("/tmp/solaris.pid");
-    let stdout = File::create("/tmp/solaris.out")?;
-    let stderr = File::create("/tmp/solaris.err")?;
-
-    pid_verifier(&pid_path);
+    let config_path 
+    = dirs::config_dir().unwrap().join("solaris/config.toml");
 
     //verify if the config file exists
     if config_path.try_exists()? {
     } else {
         create_config(&config_path)?;
     }
+
+    match &args.command {
+        Some(Commands::List { field }) => {
+            let config = load_config(&config_path)?;
+
+            match field {
+                Some(ConfigField::Watch) => {
+                    for item in &config.watch {
+                        println!("{}", item);
+                    }
+                }
+
+                Some(ConfigField::Rules) => {
+                    for item in &config.rules {
+                        println!("{}", item);
+                    }
+                }
+
+                Some(ConfigField::Protected) => {
+                    for item in &config.protected {
+                        println!("{}", item);
+                    }
+                }
+
+                Some(ConfigField::Targets) => {
+                    for (ext, dest) in &config.targets {
+                        println!("{ext} -> {dest}");
+                    }
+                }
+
+                None => {
+                    println!("Rules:");
+                    for item in &config.rules {
+                        println!("  {}", item);
+                    }
+
+                    println!("Watch:");
+                    for item in &config.watch {
+                        println!("  {}", item);
+                    }
+
+                    println!("Protected:");
+                    for item in &config.protected {
+                        println!("  {}", item);
+                    }
+
+                    println!("Targets:");
+                    for (ext, dest) in &config.targets {
+                        println!("  {ext} -> {dest}");
+                    }
+                }
+            }
+
+            return Ok(());
+        }
+
+        Some(Commands::Remove { field, value }) => {
+            let mut config = load_config(&config_path)?;
+
+            match field {
+                ConfigField::Watch => {
+                    config.watch.retain(|item| item != value.as_str());
+                }
+
+                ConfigField::Rules => {
+                    config.rules.retain(|item| item != value.as_str());
+                }
+
+                ConfigField::Protected => {
+                    config.protected.retain(|item| item != value.as_str());
+                }
+
+                ConfigField::Targets => {
+                    config.targets.remove(value);
+                }
+                
+            }
+
+            update_config(&config_path, &config)?;
+
+            return Ok(());
+        }
+
+        None => {}
+    }
+
+    let (tx, rx) = channel();
+
+    let pid_path = PathBuf::from("/tmp/solaris.pid");
+    let stdout = File::create("/tmp/solaris.out")?;
+    let stderr = File::create("/tmp/solaris.err")?;
+
+    pid_verifier(&pid_path);
 
     //load the config contents for other modules to use
     let mut config = load_config(&config_path)?;

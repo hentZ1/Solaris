@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::{path::PathBuf, str::FromStr};
 
 #[derive(Debug, Clone)]
@@ -50,6 +50,27 @@ impl FromStr for AuxTargetRule {
     }
 }
 
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub enum ConfigField {
+    Watch,
+    Rules,
+    Protected,
+    Targets,
+}
+
+//determines that "remove" and "list" are subcommands, not flags
+#[derive(Subcommand, Debug, Clone)]
+pub enum Commands {
+    List {
+        field: Option<ConfigField>,
+    },
+
+    Remove {
+        field: ConfigField,
+        value: String,
+    },
+}
+
 #[derive(Parser, Debug, Clone)]
 #[command(name = "Solaris-CLI", about = "Rust-based file and folder organizer", long_about= None)]
 pub struct Args {
@@ -81,4 +102,7 @@ pub struct Args {
         value_parser = clap::value_parser!(AuxTargetRule)
     )]
     pub targets: Vec<AuxTargetRule>,
+
+    #[command(subcommand)]
+    pub command: Option<Commands>,
 }
