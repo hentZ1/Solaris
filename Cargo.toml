@@ -10,5 +10,6 @@ daemonize = "0.5.0"
 dirs = "6.0.0"
 nix = { version = "0.31.3", features = ["signal"]}
 notify = "8.2.0"
+notify-rust = "4.17.0"
 serde = { version = "1.0.228", features = ["derive"] }
 toml = "1.1.2"

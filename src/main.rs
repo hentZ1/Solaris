@@ -13,7 +13,6 @@ use std::{
     path::PathBuf,
     sync::mpsc::{Receiver, channel},
 };
-
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let config_path = dirs::config_dir()
@@ -90,11 +89,17 @@ fn daemon_runner(pid_path: &PathBuf, stdout: File, stderr: File) -> anyhow::Resu
 }
 //function to run the apply_rules
 fn applyrules_runner(rx: Receiver<FsEvent>, targets: &HashMap<String, String>) {
+    let mut notification = notify_rust::Notification::new()
+        .appname("Solaris")
+        .timeout(100)
+        .clone();
+
     for event in rx {
         match &event {
             FsEvent::Created(path) => {
                 if let Some(Action::Move { destination }) = apply_rules(&event, targets) {
                     std::fs::rename(path, destination.join(path.file_name().unwrap())).ok();
+                    notification.summary("Solaris moved a file").show().ok();
                 }
             }
             FsEvent::Removed(_) => {}
