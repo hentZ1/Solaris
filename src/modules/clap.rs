@@ -26,22 +26,22 @@ impl FromStr for AuxTargetRule {
             .map(|e| {
                 let ext = e.trim();
 
-                if ext.starts_with(".") {
-                    ext[1..].to_string()
+                if let Some(stripped) = ext.strip_prefix('.') {
+                    stripped.to_string()
                 } else {
                     ext.to_string()
                 }
             })
             .collect();
 
-        let destination = PathBuf::from(parts[1].trim());
+        let raw_destination = parts[1].trim();
 
-        let destination = if destination.starts_with("~") {
-            dirs::home_dir()
-                .unwrap()
-                .join(destination.strip_prefix("~").unwrap())
+        let destination = if let Some(stripped) = raw_destination.strip_prefix('~') {
+            let home = dirs::home_dir()
+                .ok_or_else(|| "could not determine home directory".to_string())?;
+            home.join(stripped)
         } else {
-            destination
+            PathBuf::from(raw_destination)
         };
         Ok(AuxTargetRule {
             extensions,

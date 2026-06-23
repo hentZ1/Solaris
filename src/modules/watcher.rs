@@ -13,22 +13,30 @@ pub fn watcher(paths: Vec<String>, tx: Sender<FsEvent>) -> anyhow::Result<()> {
     //create the notify watcher and the closure is called everytime that an event occurs in the
     //filesystem
     let mut watcher = recommended_watcher(move |res: notify::Result<notify::Event>| {
-        //discart events that are errors
+        match res {
+            Ok(event) => {
+                match event.kind {
+                    EventKind::Create(_) => {
+                        if let Some(path) = event.paths.first()
+                            && let Err(e) = tx.send(FsEvent::Created(path.clone()))
+                        {
+                            eprintln!("solaris: channel send error: {}", e);
+                        }
+                    }
 
-        if let Ok(event) = res {
-            //this match verifies the event type, sends them to the channel and discart everyother
+                    EventKind::Remove(_) => {
+                        if let Some(path) = event.paths.first()
+                            && let Err(e) = tx.send(FsEvent::Removed(path.clone()))
+                        {
+                            eprintln!("solaris: channel send error: {}", e);
+                        }
+                    }
 
-            //event that the watcher is not interested
-            match event.kind {
-                EventKind::Create(_) => {
-                    tx.send(FsEvent::Created(event.paths[0].clone())).ok();
+                    _ => {}
                 }
-
-                EventKind::Remove(_) => {
-                    tx.send(FsEvent::Removed(event.paths[0].clone())).ok();
-                }
-
-                _ => {}
+            }
+            Err(e) => {
+                eprintln!("solaris: notify error: {:?}", e);
             }
         }
     })?;

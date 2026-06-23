@@ -1,3 +1,4 @@
+use anyhow::Context;
 use clap::Parser;
 use daemonize::Daemonize;
 use solaris::modules::{
@@ -16,7 +17,7 @@ use std::{
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let config_path = dirs::config_dir()
-        .ok_or_else(|| anyhow::anyhow!("could not found any directory"))?
+        .ok_or_else(|| anyhow::anyhow!("XDG directory not found"))?
         .join("solaris/config.toml");
 
     //verify if the config file exists
@@ -31,8 +32,8 @@ fn main() -> anyhow::Result<()> {
     let (tx, rx) = channel();
     //paths
     let pid_path = PathBuf::from("/tmp/solaris.pid");
-    let stdout = File::create("/tmp/solaris.out")?;
-    let stderr = File::create("/tmp/solaris.err")?;
+    let stdout = File::create("/tmp/solaris.out").context("failed to create /tmp/solaris.out")?;
+    let stderr = File::create("/tmp/solaris.err").context("failed to create /tmp/solaris.err")?;
 
     pid_verifier(&pid_path);
 
@@ -51,7 +52,7 @@ fn main() -> anyhow::Result<()> {
         rules: args.rules,
         watch: args.watch,
         protected: args.protected,
-        targets: targets,
+        targets,
     };
 
     config.merge(args_content);
@@ -63,10 +64,11 @@ fn main() -> anyhow::Result<()> {
     daemon_runner(&pid_path, stdout, stderr)?;
 
     std::thread::spawn(move || {
-        watcher(config.watch, tx).ok();
+        if let Err(e) = watcher(config.watch, tx) {
+            eprintln!("solaris: watcher error: {:#}", e);
+        }
     });
 
-    //apply the rules
     applyrules_runner(rx, &config.targets);
 
     anyhow::Ok(())
@@ -75,15 +77,12 @@ fn main() -> anyhow::Result<()> {
 //function to run the daemon
 fn daemon_runner(pid_path: &PathBuf, stdout: File, stderr: File) -> anyhow::Result<()> {
     let daemonize = Daemonize::new()
-        .pid_file(&pid_path)
+        .pid_file(pid_path)
         .working_directory("/tmp/")
         .stdout(stdout)
         .stderr(stderr);
 
-    daemonize.start().map_err(|e| {
-        eprintln!("{}", e);
-        anyhow::anyhow!(e)
-    })?;
+    daemonize.start().map_err(|e| anyhow::anyhow!(e))?;
 
     anyhow::Ok(())
 }
@@ -98,8 +97,24 @@ fn applyrules_runner(rx: Receiver<FsEvent>, targets: &HashMap<String, String>) {
         match &event {
             FsEvent::Created(path) => {
                 if let Some(Action::Move { destination }) = apply_rules(&event, targets) {
-                    std::fs::rename(path, destination.join(path.file_name().unwrap())).ok();
-                    notification.summary("Solaris moved a file").show().ok();
+                    let filename = match path.file_name() {
+                        Some(name) => name,
+                        None => {
+                            eprintln!("solaris: cannot determine filename for path {:?}", path);
+                            continue;
+                        }
+                    };
+                    let dest_path = destination.join(filename);
+                    if let Err(e) = std::fs::rename(path, &dest_path) {
+                        eprintln!(
+                            "solaris: failed to move {:?} to {:?}: {}",
+                            path, dest_path, e
+                        );
+                        continue;
+                    }
+                    if let Err(e) = notification.summary("Solaris moved a file").show() {
+                        eprintln!("solaris: notification error: {}", e);
+                    }
                 }
             }
             FsEvent::Removed(_) => {}
@@ -112,72 +127,60 @@ fn subcommand_handler(
     config_path: &PathBuf,
 ) -> Option<anyhow::Result<()>> {
     match command {
-        //LIST
-        Some(Commands::List { field }) => Some((|| -> anyhow::Result<()> {
-            let config = load_config(config_path)?;
-            match field {
-                Some(ConfigField::Watch) => {
-                    for item in &config.watch {
-                        println!("{}", item);
-                    }
-                }
-                Some(ConfigField::Rules) => {
-                    for item in &config.rules {
-                        println!("{}", item);
-                    }
-                }
-                Some(ConfigField::Protected) => {
-                    for item in &config.protected {
-                        println!("{}", item);
-                    }
-                }
-                Some(ConfigField::Targets) => {
-                    for (ext, dest) in &config.targets {
-                        println!("{ext} -> {dest}");
-                    }
-                }
-                None => {
-                    println!("Rules:");
-                    for item in &config.rules {
-                        println!("  {}", item);
-                    }
-                    println!("Watch:");
-                    for item in &config.watch {
-                        println!("  {}", item);
-                    }
-                    println!("Protected:");
-                    for item in &config.protected {
-                        println!("  {}", item);
-                    }
-                    println!("Targets:");
-                    for (ext, dest) in &config.targets {
-                        println!("  {ext} -> {dest}");
-                    }
-                }
-            }
-            Ok(())
-        })()),
-        //REMOVE
-        Some(Commands::Remove { field, value }) => Some((|| -> anyhow::Result<()> {
-            let mut config = load_config(config_path)?;
-            match field {
-                ConfigField::Watch => {
-                    config.watch.retain(|item| item != value.as_str());
-                }
-                ConfigField::Rules => {
-                    config.rules.retain(|item| item != value.as_str());
-                }
-                ConfigField::Protected => {
-                    config.protected.retain(|item| item != value.as_str());
-                }
-                ConfigField::Targets => {
-                    config.targets.remove(value);
-                }
-            }
-            update_config(config_path, &config)?;
-            Ok(())
-        })()),
-
+        Some(Commands::List { field }) => Some(handle_list(config_path, field)),
+        Some(Commands::Remove { field, value }) => Some(handle_remove(config_path, field, value)),
         None => None,
+    }
+}
+
+fn handle_list(config_path: &PathBuf, field: &Option<ConfigField>) -> anyhow::Result<()> {
+    let config = load_config(config_path)?;
+    match field {
+        Some(f) => print_field(&config, f, false),
+        None => {
+            for f in [ConfigField::Rules, ConfigField::Watch, ConfigField::Protected] {
+                print_field(&config, &f, true);
+            }
+            print_field(&config, &ConfigField::Targets, true);
+        }
+    }
+    Ok(())
+}
+
+fn handle_remove(config_path: &PathBuf, field: &ConfigField, value: &str) -> anyhow::Result<()> {
+    let mut config = load_config(config_path)?;
+    remove_field_value(&mut config, field, value);
+    update_config(config_path, &config)?;
+    Ok(())
+}
+
+fn print_field(config: &TomlContent, field: &ConfigField, header: bool) {
+    let prefix = if header { "  " } else { "" };
+    match field {
+        ConfigField::Rules => {
+            if header { println!("Rules:"); }
+            for item in &config.rules { println!("{prefix}{item}"); }
+        }
+        ConfigField::Watch => {
+            if header { println!("Watch:"); }
+            for item in &config.watch { println!("{prefix}{item}"); }
+        }
+        ConfigField::Protected => {
+            if header { println!("Protected:"); }
+            for item in &config.protected { println!("{prefix}{item}"); }
+        }
+        ConfigField::Targets => {
+            if header { println!("Targets:"); }
+            for (ext, dest) in &config.targets { println!("{prefix}{ext} -> {dest}"); }
+        }
+    }
+}
+
+fn remove_field_value(config: &mut TomlContent, field: &ConfigField, value: &str) {
+    match field {
+        ConfigField::Watch => config.watch.retain(|item| item != value),
+        ConfigField::Rules => config.rules.retain(|item| item != value),
+        ConfigField::Protected => config.protected.retain(|item| item != value),
+        ConfigField::Targets => { config.targets.remove(value); }
     }
 }
